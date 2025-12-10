@@ -1,0 +1,49 @@
+<?php
+require_once '../config/config.php';
+requireAdmin(); // Ensure only admin can access
+
+// Check if form was submitted
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    // Sanitize input
+    $resource_name = sanitizeInput($conn, $_POST['resource_name']);
+    $category_id = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
+    $status = sanitizeInput($conn, $_POST['status']);
+
+    // Validate
+    if (empty($resource_name) || empty($category_id) || empty($status)) {
+        setFlashMessage('Please fill in all required fields.', 'error');
+        redirect('add_resource.php');
+        exit;
+    }
+
+    // Make sure $conn exists
+    if (!isset($conn) || $conn === null) {
+        setFlashMessage('Database connection not established.', 'error');
+        redirect('add_resource.php');
+        exit;
+    }
+
+    // Insert into database
+    $sql = "INSERT INTO resources (resource_name, category_id, status, created_at) VALUES (?, ?, ?, NOW())";
+    $stmt = $conn->prepare($sql);
+
+    if ($stmt === false) {
+        setFlashMessage('Prepare failed: ' . $conn->error, 'error');
+        redirect('add_resource.php');
+        exit;
+    }
+
+    $stmt->bind_param("sis", $resource_name, $category_id, $status);
+
+    if ($stmt->execute()) {
+        setFlashMessage('Resource added successfully!', 'success');
+    } else {
+        setFlashMessage('Execute failed: ' . $stmt->error, 'error');
+    }
+
+    $stmt->close();
+    redirect('add_resource.php');
+    exit;
+}
+?>
