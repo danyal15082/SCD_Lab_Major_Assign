@@ -1,0 +1,149 @@
+<?php
+/**
+ * Edit User - Admin
+ * Classroom Resource Booking System
+ */
+
+require_once '../config/config.php';
+requireAdmin();
+
+$conn = getDBConnection();
+
+// Get user ID from URL
+$user_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+if (!$user_id) {
+    setFlashMessage('Invalid user ID.', 'error');
+    redirect('manage_users.php');
+    exit;
+}
+
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Sanitize input
+    $full_name = sanitizeInput($conn, $_POST['full_name']);
+    $email = sanitizeInput($conn, $_POST['email']);
+    $phone = sanitizeInput($conn, $_POST['phone'] ?? '');
+    $department = sanitizeInput($conn, $_POST['department'] ?? '');
+    $role = sanitizeInput($conn, $_POST['role']);
+    $status = sanitizeInput($conn, $_POST['status']);
+
+    // Validate
+    if (empty($full_name) || empty($email) || empty($role) || empty($status)) {
+        setFlashMessage('Please fill in all required fields.', 'error');
+        redirect('edit_user.php?id=' . $user_id);
+        exit;
+    }
+
+    // Check if email is already taken by another user
+    $sql = "SELECT user_id FROM users WHERE email = ? AND user_id != ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("si", $email, $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        setFlashMessage('Email is already in use by another user.', 'error');
+        redirect('edit_user.php?id=' . $user_id);
+        exit;
+    }
+    $stmt->close();
+
+    // Update in database
+    $sql = "UPDATE users SET full_name = ?, email = ?, phone = ?, department = ?, role = ?, status = ? WHERE user_id = ?";
+    $stmt = $conn->prepare($sql);
+
+    if ($stmt === false) {
+        setFlashMessage('Prepare failed: ' . $conn->error, 'error');
+        redirect('edit_user.php?id=' . $user_id);
+        exit;
+    }
+
+    $stmt->bind_param("ssssssi", $full_name, $email, $phone, $department, $role, $status, $user_id);
+
+    if ($stmt->execute()) {
+        setFlashMessage('User updated successfully!', 'success');
+    } else {
+        setFlashMessage('Execute failed: ' . $stmt->error, 'error');
+    }
+
+    $stmt->close();
+    closeDBConnection($conn);
+    redirect('manage_users.php');
+    exit;
+}
+
+// Fetch user data
+$sql = "SELECT * FROM users WHERE user_id = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows === 0) {
+    setFlashMessage('User not found.', 'error');
+    redirect('manage_users.php');
+    exit;
+}
+
+$user = $result->fetch_assoc();
+$stmt->close();
+closeDBConnection($conn);
+
+$page_title = 'Edit User';
+include '../includes/header.php';
+
+// Get flash message if exists
+$flash = getFlashMessage();
+?>
+
+<div class="container mt-5">
+    <h2>Edit User</h2>
+
+    <!-- Display flash message -->
+    <?php if ($flash): ?>
+        <div class="alert alert-<?php echo $flash['type'] === 'error' ? 'danger' : $flash['type']; ?> alert-dismissible fade show" role="alert">
+            <?php echo $flash['message']; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+
+    <form method="POST" action="edit_user.php?id=<?php echo $user_id; ?>">
+        <div class="form-group">
+            <label for="full_name">Full Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="full_name" name="full_name" value="<?php echo htmlspecialchars($user['full_name']); ?>" required>
+        </div>
+        <div class="form-group mt-3">
+            <label for="email">Email <span class="text-danger">*</span></label>
+            <input type="email" class="form-control" id="email" name="email" value="<?php echo htmlspecialchars($user['email']); ?>" required>
+        </div>
+        <div class="form-group mt-3">
+            <label for="phone">Phone</label>
+            <input type="text" class="form-control" id="phone" name="phone" value="<?php echo htmlspecialchars($user['phone'] ?? ''); ?>">
+        </div>
+        <div class="form-group mt-3">
+            <label for="department">Department</label>
+            <input type="text" class="form-control" id="department" name="department" value="<?php echo htmlspecialchars($user['department'] ?? ''); ?>">
+        </div>
+        <div class="form-group mt-3">
+            <label for="role">Role <span class="text-danger">*</span></label>
+            <select class="form-control" id="role" name="role" required>
+                <option value="">Select Role</option>
+                <option value="admin" <?php echo $user['role'] === 'admin' ? 'selected' : ''; ?>>Admin</option>
+                <option value="user" <?php echo $user['role'] === 'user' ? 'selected' : ''; ?>>User</option>
+            </select>
+        </div>
+        <div class="form-group mt-3">
+            <label for="status">Status <span class="text-danger">*</span></label>
+            <select class="form-control" id="status" name="status" required>
+                <option value="">Select Status</option>
+                <option value="active" <?php echo $user['status'] === 'active' ? 'selected' : ''; ?>>Active</option>
+                <option value="inactive" <?php echo $user['status'] === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Update User</button>
+        <a href="manage_users.php" class="btn btn-secondary mt-3">Cancel</a>
+    </form>
+</div>
+
+<?php include '../includes/footer.php'; ?>
